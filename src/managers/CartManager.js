@@ -7,7 +7,20 @@ class CartManager {
   }
 
   async getCartById(id) {
-    return Cart.findById(id).populate("products.product").lean();
+    const cart = await Cart.findById(id).populate("products.product");
+
+    if (!cart) {
+      return null;
+    }
+
+    const cleanedProducts = cart.products.filter((item) => item.product);
+
+    if (cleanedProducts.length !== cart.products.length) {
+      cart.products = cleanedProducts;
+      await cart.save();
+    }
+
+    return cart.toObject();
   }
 
   async createCart() {
@@ -22,7 +35,7 @@ class CartManager {
     const product = await Product.findById(pid);
     if (!product) return null;
 
-    const productIndex = cart.products.findIndex((item) => item.product.toString() === pid.toString());
+    const productIndex = cart.products.findIndex((item) => item.product && item.product.toString() === pid.toString());
 
     if (productIndex !== -1) {
       cart.products[productIndex].quantity += 1;
@@ -38,7 +51,7 @@ class CartManager {
     const cart = await Cart.findById(cid);
     if (!cart) return null;
 
-    cart.products = cart.products.filter((item) => item.product.toString() !== pid.toString());
+    cart.products = cart.products.filter((item) => item.product && item.product.toString() !== pid.toString());
     await cart.save();
 
     return Cart.findById(cid).populate("products.product").lean();
@@ -48,12 +61,25 @@ class CartManager {
     const cart = await Cart.findById(cid);
     if (!cart) return null;
 
-    cart.products = Array.isArray(products)
-      ? products.map((item) => ({
-          product: item.product,
-          quantity: item.quantity,
-        }))
-      : [];
+    const normalizedProducts = new Map();
+
+    if (Array.isArray(products)) {
+      products.forEach((item) => {
+        const productId = item?.product?.toString?.() ?? String(item?.product ?? "").trim();
+        const quantity = Number.parseInt(item?.quantity, 10);
+
+        if (!productId || !Number.isInteger(quantity) || quantity < 1) {
+          return;
+        }
+
+        normalizedProducts.set(productId, {
+          product: productId,
+          quantity,
+        });
+      });
+    }
+
+    cart.products = Array.from(normalizedProducts.values());
 
     await cart.save();
     return Cart.findById(cid).populate("products.product").lean();
@@ -63,11 +89,17 @@ class CartManager {
     const cart = await Cart.findById(cid);
     if (!cart) return null;
 
-    const productIndex = cart.products.findIndex((item) => item.product.toString() === pid.toString());
+    const nextQuantity = Number.parseInt(quantity, 10);
+
+    if (!Number.isInteger(nextQuantity) || nextQuantity < 1) {
+      return null;
+    }
+
+    const productIndex = cart.products.findIndex((item) => item.product && item.product.toString() === pid.toString());
 
     if (productIndex === -1) return null;
 
-    cart.products[productIndex].quantity = quantity;
+    cart.products[productIndex].quantity = nextQuantity;
     await cart.save();
 
     return Cart.findById(cid).populate("products.product").lean();

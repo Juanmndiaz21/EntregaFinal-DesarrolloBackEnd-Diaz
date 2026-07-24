@@ -6,17 +6,25 @@ const router = Router();
 const manager = new ProductManager();
 const cartManager = new CartManager();
 
+function buildPaginationLink(req, page) {
+    const params = new URLSearchParams();
+
+    Object.entries(req.query).forEach(([key, value]) => {
+        if (key !== "page" && value !== undefined && value !== null && String(value).trim() !== "") {
+            params.set(key, String(value));
+        }
+    });
+
+    params.set("page", String(page));
+    return `${req.protocol}://${req.get("host")}${req.baseUrl}/products?${params.toString()}`;
+}
+
 async function renderProductsView(req, res) {
-    const { limit = 10, page = 1, query = "", sort = "" } = req.query;
-    const result = await manager.getProductsPaginated(page, limit, query, sort);
+    const result = await manager.getProductsPaginated(req.query);
     const carts = await cartManager.getCarts();
     const cartId = carts.length > 0 ? carts[0]._id.toString() : (await cartManager.createCart())._id.toString();
 
-    const baseUrl = `${req.protocol}://${req.get("host")}${req.baseUrl}/products`;
-    const queryParam = query !== undefined && query !== null && String(query).trim() !== "" ? `&query=${encodeURIComponent(query)}` : "";
-    const sortParam = sort === "asc" || sort === "desc" ? `&sort=${encodeURIComponent(sort)}` : "";
-
-    return res.render("home", {
+    return res.render("index", {
         products: result.products,
         totalPages: result.totalPages,
         prevPage: result.prevPage,
@@ -24,16 +32,20 @@ async function renderProductsView(req, res) {
         page: result.page,
         hasPrevPage: result.hasPrevPage,
         hasNextPage: result.hasNextPage,
-        prevLink: result.prevPage ? `${baseUrl}?limit=${limit}&page=${result.prevPage}${queryParam}${sortParam}` : null,
-        nextLink: result.nextPage ? `${baseUrl}?limit=${limit}&page=${result.nextPage}${queryParam}${sortParam}` : null,
+        prevLink: result.prevPage ? buildPaginationLink(req, result.prevPage) : null,
+        nextLink: result.nextPage ? buildPaginationLink(req, result.nextPage) : null,
         cartId,
     });
+}
+
+function renderHomeView(req, res) {
+    return res.render("home");
 }
 
 // vista home.handlebars
 router.get("/", async (req, res) => {
     try {
-        await renderProductsView(req, res);
+        renderHomeView(req, res);
     } catch (error) {
         res.status(500).send("Error al cargar la vista Home");
     }

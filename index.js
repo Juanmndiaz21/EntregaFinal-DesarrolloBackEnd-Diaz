@@ -60,7 +60,11 @@ async function startServer() {
 
             socket.on("deleteProduct", async (id) => {
                 try {
-                    await manager.deleteProduct(Number(id));
+                    if (!mongoose.Types.ObjectId.isValid(id)) {
+                        throw new Error(`ID de producto inválido: ${id}`);
+                    }
+
+                    await manager.deleteProduct(id);
                     const products = await manager.getProducts();
                     io.emit("updateProducts", products);
                 } catch (error) {
